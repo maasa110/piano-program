@@ -1,0 +1,1306 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ピアノ発表会プログラム設計・印刷シミュレーター</title>
+
+  <!-- アプリ化（PWA） -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="発表会プログラム">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Cinzel:wght@600&family=Cormorant+Garamond:ital,wght@0,600;1,400&family=Kaisei+Decol:wght@500;700&family=Klee+One:wght@400;600&family=M+PLUS+Rounded+1c:wght@400;700&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;600;700&family=Playfair+Display:ital,wght@0,600;1,400&family=Sawarabi+Mincho&family=Shippori+Mincho:wght@500;700&family=Yuji+Syuku&family=Yomogi&family=Zen+Kaku+Gothic+New:wght@500&family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
+
+  <!-- SheetJS -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root {
+      --bg-slate: #0f172a;
+      --panel-bg: #ffffff;
+      --border-color: #cbd5e1;
+      --accent-color: #d97706;
+      --accent-hover: #b45309;
+      --danger: #dc2626;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #f1f5f9; color: #1e293b; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ヘッダー */
+    header { height: 50px; background: var(--bg-slate); color: white; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; flex-shrink: 0; gap: 12px; }
+    header h1 { font-size: 1.1rem; font-weight: bold; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .header-btns { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+    .save-status { font-size: 0.75rem; color: #94a3b8; margin-right: 6px; }
+    .save-status.warn { color: #fbbf24; }
+
+    /* メインコンテナ */
+    .app-container { flex: 1; display: flex; position: relative; overflow: hidden; }
+
+    /* 左側操作パネル */
+    .sidebar { width: 380px; min-width: 280px; max-width: 650px; background: var(--panel-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; z-index: 5; flex-shrink: 0; }
+    .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border-color); background: #f8fafc; }
+    .tab-btn { flex: 1; padding: 12px 4px; font-size: 0.8rem; font-weight: bold; border: none; background: none; cursor: pointer; color: #64748b; border-bottom: 3px solid transparent; text-align: center; }
+    .tab-btn.active { color: var(--accent-color); border-bottom-color: var(--accent-color); background: #ffffff; }
+
+    .sidebar-content { flex: 1; overflow-y: auto; padding: 18px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .section-title { font-size: 0.88rem; color: #0f172a; margin: 20px 0 10px 0; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; display: flex; align-items: center; }
+    .section-title:first-child { margin-top: 0; }
+    .badge { font-size: 0.65rem; background: #fef3c7; color: #92400e; padding: 1px 7px; border-radius: 999px; margin-left: 6px; font-weight: bold; white-space: nowrap; }
+    .badge.common { background: #e2e8f0; color: #475569; }
+    .hint { font-size: 0.75rem; color: #64748b; margin-top: 4px; line-height: 1.5; }
+    .divider { border: 0; border-top: 1px solid var(--border-color); margin: 16px 0; }
+
+    /* リサイズハンドル */
+    .resizer { width: 6px; background: #cbd5e1; cursor: col-resize; transition: background 0.2s; z-index: 10; flex-shrink: 0; touch-action: none; }
+    .resizer:hover, .resizer.dragging { background: var(--accent-color); }
+
+    /* 右側メインプレビュー */
+    .main-area { flex: 1; display: flex; flex-direction: column; background: #e2e8f0; overflow: hidden; position: relative; min-width: 0; }
+
+    /* プレビューツールバー */
+    .toolbar { min-height: 46px; background: #ffffff; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 6px 16px; flex-shrink: 0; gap: 12px; flex-wrap: wrap; }
+    .page-switcher { display: flex; gap: 8px; align-items: center; }
+    .btn-page { padding: 6px 14px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; background: #ffffff; cursor: pointer; font-weight: bold; }
+    .btn-page.active { background: var(--bg-slate); color: white; border-color: var(--bg-slate); }
+    .overflow-warn { font-size: 0.8rem; font-weight: bold; color: var(--danger); }
+
+    /* ズームコントロール */
+    .zoom-controls { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #475569; }
+    .zoom-btn { padding: 4px 10px; border: 1px solid var(--border-color); background: #f8fafc; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .zoom-btn:hover { background: #e2e8f0; }
+    .zoom-btn.active { background: var(--bg-slate); color: white; border-color: var(--bg-slate); }
+    .zoom-label { min-width: 3em; text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* プレビュービューポート（margin:auto で中央寄せ＝はみ出しても左上までスクロール可能） */
+    .viewport { flex: 1; overflow: auto; display: flex; padding: 40px; }
+    .sheet-wrap { margin: auto; flex-shrink: 0; position: relative; }
+    .sheet-wrap.inactive { position: absolute; left: -20000px; top: 0; visibility: hidden; }
+
+    /* 用紙スタイル (A4横サイズ 297mm x 210mm) */
+    .page-sheet {
+      --font-title: 'Shippori Mincho', serif;
+      --font-body: 'Noto Sans JP', sans-serif;
+      --event-bg: #ffedd5;
+      --event-text: #c2410c;
+      width: 297mm;
+      height: 210mm;
+      background-color: #ffffff;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.18);
+      display: flex;
+      position: relative;
+      transform-origin: top left;
+    }
+
+    /* 中央二つ折り線 */
+    .fold-line { position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed rgba(0,0,0,0.25); z-index: 10; pointer-events: none; }
+
+    /* A5左右ページ */
+    .page-half {
+      width: 50%;
+      height: 100%;
+      padding: 18mm 16mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      justify-content: safe center;
+      align-items: center;
+      position: relative;
+      z-index: 2;
+    }
+    .page-half.overflow { outline: 2px dashed var(--danger); outline-offset: -3px; }
+
+    /* 表紙 */
+    .cover-container { width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .class-name { color: #334155; font-weight: 500; font-family: var(--font-body); }
+    .main-title { color: #0f172a; font-weight: 700; line-height: 1.25; font-family: var(--font-title); }
+    .sub-title { color: #475569; margin-top: 6px; font-family: var(--font-title); }
+    .cover-footer { color: #334155; line-height: 1.6; font-family: var(--font-body); }
+
+    /* 裏表紙 */
+    .back-cover-box { width: 100%; display: flex; flex-direction: column; align-items: center; color: #334155; text-align: center; font-family: var(--font-body); }
+    .back-cover-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 12px; padding-bottom: 4px; width: 80%; border-bottom: 1px solid rgba(0,0,0,0.1); }
+    .back-cover-body { line-height: 1.7; white-space: pre-wrap; width: 100%; word-break: break-all; }
+
+    /* 中面（プログラム一覧表） */
+    .program-list { width: 100%; display: flex; flex-direction: column; font-family: var(--font-body); }
+    .program-item { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1px dotted #cbd5e1; width: 100%; }
+    .placeholder { text-align: center; margin: auto; color: #94a3b8; line-height: 1.8; }
+
+    /* 演者グループ（名前＋学年） */
+    .performer-group { display: flex; align-items: baseline; text-align: left; flex-shrink: 0; padding-right: 8px; }
+    .performer-group.has-grade .performer-name { flex-shrink: 0; font-weight: bold; color: #0f172a; word-break: break-all; }
+    .performer-group.has-grade .performer-grade { flex-shrink: 0; font-size: 0.85em; color: #64748b; white-space: nowrap; }
+    .performer-group.no-grade { display: block; }
+    .performer-group.no-grade .performer-name { width: 100%; font-weight: bold; color: #0f172a; word-break: break-all; }
+
+    /* 種別「項目」 */
+    .section-header-item {
+      width: 100%;
+      padding: 4px 8px;
+      margin-left: -8px;
+      border-left: 4px solid var(--accent-color);
+      background-color: rgba(245, 158, 11, 0.08);
+      border-radius: 0 4px 4px 0;
+      font-weight: bold;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    /* イベント行 */
+    .event-bar-item {
+      width: 100%;
+      padding: 6px 12px;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      line-height: 1.4;
+      word-break: break-word;
+      background-color: var(--event-bg);
+      color: var(--event-text);
+    }
+
+    /* 曲名エリア */
+    .song-group { flex: 1; display: flex; flex-direction: column; text-align: left; min-width: 0; }
+    .song-title-1 { font-weight: 500; color: #1e293b; line-height: 1.35; word-break: break-word; }
+    .song-title-2 { font-size: 1em; font-weight: 500; color: #1e293b; margin-top: 3px; line-height: 1.35; word-break: break-word; text-indent: 1em; }
+
+    /* フォームUI */
+    .form-group { margin-bottom: 16px; }
+    .form-group > label { display: flex; align-items: center; font-size: 0.82rem; font-weight: bold; margin-bottom: 6px; color: #334155; }
+    .form-control { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.88rem; font-family: inherit; }
+    textarea.form-control { resize: vertical; min-height: 80px; }
+    .dual-input { display: flex; align-items: center; gap: 8px; }
+    .dual-input input[type="range"] { flex: 1; min-width: 0; }
+    .dual-input input[type="number"] { width: 70px; text-align: center; }
+    .inline-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+    .file-info { font-size: 0.75rem; color: #059669; margin-top: 4px; font-weight: bold; }
+    .file-info:empty { display: none; }
+
+    .color-picker-group { display: flex; gap: 16px; align-items: center; }
+    .color-picker-item { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: bold; color: #334155; }
+    .color-picker-item input[type="color"] { width: 36px; height: 36px; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; background: none; }
+
+    .btn-action { padding: 8px 14px; background: var(--accent-color); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.85rem; font-family: inherit; white-space: nowrap; }
+    .btn-action:hover { background: var(--accent-hover); }
+    .btn-ghost { background: #334155; }
+    .btn-ghost:hover { background: #475569; }
+    .btn-secondary { background: #64748b; margin-top: 6px; width: 100%; }
+    .btn-secondary:hover { background: #475569; }
+    .btn-small { padding: 5px 10px; font-size: 0.75rem; background: #64748b; }
+    .btn-small:hover { background: #475569; }
+    .hidden-input { display: none; }
+    .mobile-only, .title-short { display: none; }
+    .sheet-close { width: 100%; padding: 10px; margin-bottom: 14px; border: 1px solid var(--border-color); border-radius: 8px; background: #f8fafc; color: #475569; font-weight: bold; font-size: 0.9rem; font-family: inherit; cursor: pointer; }
+
+    /* スマホ・タブレット（縦） */
+    @media (max-width: 900px) {
+      body { height: 100dvh; }
+      header { height: auto; min-height: 48px; padding: env(safe-area-inset-top) 10px 0; gap: 8px; }
+      header h1 { font-size: 0.95rem; }
+      .title-full, .btn-label, .zoom-text, .zoom-btn[data-zoom="0.5"], .zoom-btn[data-zoom="0.75"] { display: none; }
+      .title-short { display: inline; }
+      .header-btns { gap: 6px; }
+      .header-btns .btn-action { padding: 8px 11px; font-size: 1rem; }
+      .save-status { display: none; }
+      .save-status.warn { display: inline; max-width: 28vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      /* プレビューを上、設定パネルを下（引き出し式）に配置 */
+      .app-container { flex-direction: column-reverse; }
+      .resizer { display: none; }
+      .sidebar { width: 100% !important; min-width: 0; max-width: none; border-right: none; border-top: 1px solid var(--border-color); box-shadow: 0 -6px 20px rgba(0,0,0,0.08); padding-bottom: env(safe-area-inset-bottom); }
+      .sidebar-tabs { order: 2; border-bottom: none; border-top: 1px solid var(--border-color); }
+      .tab-btn { padding: 14px 2px; font-size: 0.78rem; border-bottom: none; border-top: 3px solid transparent; }
+      .tab-btn.active { border-top-color: var(--accent-color); }
+      .sidebar:not(.open) .tab-btn.active { color: #64748b; border-top-color: transparent; background: none; }
+      .sidebar-content { display: none; flex: none; height: 52dvh; padding: 14px 16px; }
+      .sidebar.open .sidebar-content { display: block; }
+      .mobile-only { display: block; }
+
+      .toolbar { padding: 6px 10px; gap: 6px; }
+      .btn-page { padding: 7px 10px; font-size: 0.8rem; }
+      .zoom-btn { padding: 6px 10px; }
+      .viewport { padding: 12px; }
+
+      /* iOSで入力時に自動ズームされないよう16px以上にする */
+      .form-control, select.form-control, textarea.form-control { font-size: 16px; }
+      .dual-input input[type="range"] { height: 32px; }
+      .dual-input input[type="number"] { width: 76px; }
+      .btn-small { padding: 9px 12px; font-size: 0.85rem; }
+    }
+
+    /* 印刷スタイル */
+    @page { size: A4 landscape; margin: 0; }
+    @media print {
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      html, body { height: auto; overflow: visible; background: white; display: block; }
+      header, .sidebar, .resizer, .toolbar, .screen-only { display: none !important; }
+      .app-container, .main-area, .viewport { display: block; overflow: visible; padding: 0; background: transparent; }
+      .sheet-wrap, .sheet-wrap.inactive { position: static; visibility: visible; width: auto !important; height: auto !important; margin: 0; }
+      .page-sheet { box-shadow: none; transform: none !important; break-after: page; }
+      .sheet-wrap:last-child .page-sheet { break-after: auto; }
+      .fold-line { display: none; }
+      .page-half.overflow { outline: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🎹 <span class="title-full">ピアノ発表会プログラム設計・印刷シミュレーター</span><span class="title-short">発表会プログラム</span></h1>
+    <div class="header-btns">
+      <span class="save-status" id="saveStatus"></span>
+      <button class="btn-action btn-ghost" onclick="exportData()" title="データ書き出し：Excelデータ・設定・背景画像をまとめて1つのファイルに保存します" aria-label="データ書き出し">📤<span class="btn-label"> データ書き出し</span></button>
+      <button class="btn-action btn-ghost" onclick="document.getElementById('importFile').click()" title="データ読み込み：書き出したデータファイルを読み込みます" aria-label="データ読み込み">📂<span class="btn-label"> データ読み込み</span></button>
+      <input type="file" id="importFile" class="hidden-input" accept=".json,application/json" onchange="importData(event)">
+      <button class="btn-action" onclick="printNow()" title="印刷画面で「A4・横・余白なし」を選んでください。1枚目＝表紙/裏表紙、2枚目＝中面です" aria-label="印刷・PDF出力">🖨️<span class="btn-label"> 印刷・PDF出力</span></button>
+    </div>
+  </header>
+
+  <div class="app-container">
+
+    <!-- 左側設定パネル -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-tabs" id="sidebarTabs">
+        <button class="tab-btn active" data-tab="excel" data-preview="inside">Excelデータ</button>
+        <button class="tab-btn" data-tab="basic" data-preview="cover">表紙レイアウト</button>
+        <button class="tab-btn" data-tab="style">文字スタイル</button>
+        <button class="tab-btn" data-tab="bg">背景画像</button>
+      </div>
+
+      <div class="sidebar-content">
+        <button class="sheet-close mobile-only" onclick="closeSheet()">▼ 閉じてプレビューを見る</button>
+        <!-- タブ1: Excel解析＆クラス個別設定 -->
+        <div id="tab-excel" class="tab-panel active">
+          <div class="form-group">
+            <label>1. Excelファイルをアップロード</label>
+            <input type="file" class="form-control" id="excelFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onchange="handleExcel(event)">
+            <div class="file-info" id="excelInfo"></div>
+            <p class="hint">※シート名がそのまま「クラス名」になります。<br>※列構成：種別 | 氏名 | 学年 | 曲名1 | 曲名2（1行目は見出し）<br>※種別「項目」＝見出し行、「イベント／企画／ゲーム」を含む＝色付き行</p>
+            <div class="inline-row">
+              <button class="btn-action btn-small" onclick="downloadSample()">📄 見本Excelをダウンロード</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>2. 表示するクラス（シート）を選択</label>
+            <select class="form-control" id="sheetSelect" onchange="onSheetChange()"></select>
+          </div>
+
+          <h3 class="section-title">【中面レイアウト】<span class="badge">クラス別</span></h3>
+          <div class="form-group">
+            <label>文字サイズ (px)</label>
+            <div class="dual-input" data-key="fontSize" data-scope="class">
+              <input type="range" min="9" max="24">
+              <input type="number" class="form-control" min="9" max="24">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>行間・演目同士の間隔 (px)</label>
+            <div class="dual-input" data-key="itemGap" data-scope="class">
+              <input type="range" min="2" max="24">
+              <input type="number" class="form-control" min="2" max="24">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>曲名の開始位置（氏名エリアの幅 %）</label>
+            <div class="dual-input" data-key="performerWidth" data-scope="class">
+              <input type="range" min="20" max="70">
+              <input type="number" class="form-control" min="20" max="70">
+            </div>
+            <p class="hint">※値を小さくすると曲名エリアが広がり、改行を防げます。</p>
+          </div>
+
+          <div class="form-group">
+            <label>氏名と学年の境界位置 (氏名内 %)</label>
+            <div class="dual-input" data-key="nameWidth" data-scope="class">
+              <input type="range" min="30" max="80">
+              <input type="number" class="form-control" min="30" max="80">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>左ページの表示件数</label>
+            <div class="dual-input" data-key="splitIndex" data-scope="class">
+              <input type="range" min="1" max="30">
+              <input type="number" class="form-control" min="1" max="30">
+            </div>
+            <div class="inline-row">
+              <button class="btn-action btn-small" onclick="resetSplit()">半分で自動分割に戻す</button>
+            </div>
+          </div>
+
+          <h3 class="section-title">【中面 余白】<span class="badge common">全クラス共通</span></h3>
+          <div class="form-group">
+            <label>上部余白 (mm)</label>
+            <div class="dual-input" data-key="insideTopMargin">
+              <input type="range" min="5" max="50">
+              <input type="number" class="form-control" min="5" max="50">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>下部余白 (mm)</label>
+            <div class="dual-input" data-key="insideBottomMargin">
+              <input type="range" min="5" max="50">
+              <input type="number" class="form-control" min="5" max="50">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>左余白 (mm)</label>
+            <div class="dual-input" data-key="insideLeftMargin">
+              <input type="range" min="5" max="40">
+              <input type="number" class="form-control" min="5" max="40">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>右余白 (mm) ※曲名側</label>
+            <div class="dual-input" data-key="insideRightMargin">
+              <input type="range" min="5" max="40">
+              <input type="number" class="form-control" min="5" max="40">
+            </div>
+          </div>
+        </div>
+
+        <!-- タブ2: 表紙レイアウト -->
+        <div id="tab-basic" class="tab-panel">
+          <h3 class="section-title">【表紙レイアウト・位置調整】<span class="badge common">全クラス共通</span></h3>
+          <div class="form-group">
+            <label>表紙（右面） 上余白 (mm)</label>
+            <div class="dual-input" data-key="coverTopMargin">
+              <input type="range" min="0" max="36">
+              <input type="number" class="form-control" min="0" max="36">
+            </div>
+            <p class="hint">※大きくすると内容が下へ、小さくすると上へ移動します（18mm＝中央）</p>
+          </div>
+
+          <div class="form-group">
+            <label>裏表紙（左面） 上余白 (mm)</label>
+            <div class="dual-input" data-key="backTopMargin">
+              <input type="range" min="0" max="36">
+              <input type="number" class="form-control" min="0" max="36">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>クラス名 〜 タイトルの間隔 (px)</label>
+            <div class="dual-input" data-key="coverGap1">
+              <input type="range" min="0" max="80">
+              <input type="number" class="form-control" min="0" max="80">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>タイトル 〜 日時・会場の間隔 (px)</label>
+            <div class="dual-input" data-key="coverGap2">
+              <input type="range" min="0" max="120">
+              <input type="number" class="form-control" min="0" max="120">
+            </div>
+          </div>
+
+          <h3 class="section-title">【表紙テキスト設定】</h3>
+          <div class="form-group">
+            <label>クラス名<span class="badge">クラス別</span></label>
+            <input type="text" class="form-control" data-key="className" data-scope="class">
+            <p class="hint">※初期値はシート名です。クラスごとに保存されます。</p>
+          </div>
+          <div class="form-group">
+            <label>クラス名 文字サイズ (px)</label>
+            <div class="dual-input" data-key="coverHeaderSize">
+              <input type="range" min="12" max="36">
+              <input type="number" class="form-control" min="12" max="36">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>メインタイトル</label>
+            <input type="text" class="form-control" data-key="inputTitle">
+          </div>
+          <div class="form-group">
+            <label>サブタイトル</label>
+            <input type="text" class="form-control" data-key="inputSubTitle">
+          </div>
+          <div class="form-group">
+            <label>メインタイトル 文字サイズ (px)</label>
+            <div class="dual-input" data-key="coverTitleSize">
+              <input type="range" min="20" max="60">
+              <input type="number" class="form-control" min="20" max="60">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>日時</label>
+            <input type="text" class="form-control" data-key="inputDate">
+          </div>
+          <div class="form-group">
+            <label>会場名</label>
+            <input type="text" class="form-control" data-key="inputPlace">
+          </div>
+          <div class="form-group">
+            <label>時間</label>
+            <input type="text" class="form-control" data-key="inputTime">
+          </div>
+          <div class="form-group">
+            <label>日時・会場・時間 文字サイズ (px)</label>
+            <div class="dual-input" data-key="coverFooterSize">
+              <input type="range" min="10" max="24">
+              <input type="number" class="form-control" min="10" max="24">
+            </div>
+          </div>
+
+          <h3 class="section-title">【裏表紙メッセージ設定】</h3>
+          <div class="form-group">
+            <label>裏表紙 タイトル</label>
+            <input type="text" class="form-control" data-key="inputBackTitle">
+          </div>
+          <div class="form-group">
+            <label>裏表紙 本文</label>
+            <textarea class="form-control" data-key="inputBackBody"></textarea>
+          </div>
+        </div>
+
+        <!-- タブ3: 文字スタイル＆色設定 -->
+        <div id="tab-style" class="tab-panel">
+          <div class="form-group">
+            <label>タイトルのフォント</label>
+            <select class="form-control" data-key="fontTitle">
+              <option value="'Shippori Mincho', serif">しっぽり明朝（上品・クラシック）</option>
+              <option value="'Noto Serif JP', serif">Noto Serif（標準明朝体）</option>
+              <option value="'Sawarabi Mincho', serif">さわらび明朝（繊細・明瞭）</option>
+              <option value="'Kaisei Decol', serif">快星 デコル（装飾・和風モダン）</option>
+              <option value="'Yuji Syuku', serif">祐司 宿（毛筆手書き・風格）</option>
+              <option value="'Zen Maru Gothic', sans-serif">Zen 丸ゴシック（柔らかい）</option>
+              <option value="'M PLUS Rounded 1c', sans-serif">M PLUS 丸ゴシック（可愛らしい）</option>
+              <option value="'Klee One', cursive">クレー One（硬筆手書き風）</option>
+              <option value="'Yomogi', cursive">よもぎ（アットホーム手書き風）</option>
+              <option value="'Cinzel', serif">Cinzel（欧文高級タイトル）</option>
+              <option value="'Playfair Display', serif">Playfair Display（欧文エレガント）</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>プログラム・本文のフォント</label>
+            <select class="form-control" data-key="fontBody">
+              <option value="'Noto Sans JP', sans-serif">Noto Sans（見やすい標準ゴシック）</option>
+              <option value="'Noto Serif JP', serif">Noto Serif（明朝体）</option>
+              <option value="'Shippori Mincho', serif">しっぽり明朝（クラシック）</option>
+              <option value="'Sawarabi Mincho', serif">さわらび明朝（スッキリ明朝）</option>
+              <option value="'Kaisei Decol', serif">快星 デコル（装飾・和風）</option>
+              <option value="'Yuji Syuku', serif">祐司 宿（毛筆手書き風）</option>
+              <option value="'Zen Maru Gothic', sans-serif">Zen 丸ゴシック</option>
+              <option value="'M PLUS Rounded 1c', sans-serif">M PLUS 丸ゴシック</option>
+              <option value="'Klee One', cursive">クレー One（綺麗め手書き）</option>
+              <option value="'Yomogi', cursive">よもぎ（かわいい手書き）</option>
+              <option value="'Zen Kaku Gothic New', sans-serif">Zen 角ゴシック（現代風）</option>
+              <option value="'Cinzel', serif">Cinzel（欧文風明朝）</option>
+            </select>
+          </div>
+
+          <h3 class="section-title">【イベント・コーナー行の色設定】</h3>
+          <div class="form-group">
+            <div class="color-picker-group">
+              <div class="color-picker-item">
+                <label for="eventBgColor">背景色:</label>
+                <input type="color" id="eventBgColor" data-key="eventBgColor">
+              </div>
+              <div class="color-picker-item">
+                <label for="eventTextColor">文字色:</label>
+                <input type="color" id="eventTextColor" data-key="eventTextColor">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- タブ4: 背景画像設定 -->
+        <div id="tab-bg" class="tab-panel">
+          <div class="form-group">
+            <label>表紙・裏表紙の背景画像</label>
+            <input type="file" class="form-control" accept="image/*" id="bgCoverInput" onchange="loadBg(event, 'cover')">
+            <div class="file-info" id="bgCoverInfo"></div>
+            <button class="btn-action btn-secondary" onclick="clearBg('cover')">表紙背景を解除・クリア</button>
+          </div>
+          <hr class="divider">
+          <div class="form-group">
+            <label>中面の背景画像</label>
+            <input type="file" class="form-control" accept="image/*" id="bgInsideInput" onchange="loadBg(event, 'inside')">
+            <div class="file-info" id="bgInsideInfo"></div>
+            <button class="btn-action btn-secondary" onclick="clearBg('inside')">中面背景を解除・クリア</button>
+          </div>
+          <p class="hint">※大きな画像は保存容量に収まるよう、印刷に十分な解像度（長辺3000px）へ自動で縮小します。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- リサイズハンドル -->
+    <div class="resizer" id="resizer"></div>
+
+    <!-- 右側メインプレビュー領域 -->
+    <div class="main-area">
+      <div class="toolbar">
+        <div class="page-switcher">
+          <button class="btn-page active" id="btnCover" onclick="switchPage('cover')">表紙・裏表紙</button>
+          <button class="btn-page" id="btnInside" onclick="switchPage('inside')">中面（プログラム演目）</button>
+          <span class="overflow-warn" id="overflowWarn"></span>
+        </div>
+
+        <div class="zoom-controls">
+          <span class="zoom-text">表示サイズ:</span>
+          <button class="zoom-btn" data-zoom="0.5">50%</button>
+          <button class="zoom-btn" data-zoom="0.75">75%</button>
+          <button class="zoom-btn" data-zoom="1">100%</button>
+          <button class="zoom-btn" data-zoom="fit">自動フィット</button>
+          <span class="zoom-label" id="zoomLabel"></span>
+        </div>
+      </div>
+
+      <div class="viewport" id="viewport">
+        <!-- 1枚目: 表紙・裏表紙（A4横） -->
+        <div class="sheet-wrap" id="wrapCover">
+          <div class="page-sheet" id="sheetCover">
+            <div class="fold-line"></div>
+            <div class="page-half" id="coverLeft"></div>
+            <div class="page-half" id="coverRight"></div>
+          </div>
+        </div>
+        <!-- 2枚目: 中面（A4横） -->
+        <div class="sheet-wrap inactive" id="wrapInside">
+          <div class="page-sheet" id="sheetInside">
+            <div class="fold-line"></div>
+            <div class="page-half" id="insideLeft"></div>
+            <div class="page-half" id="insideRight"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'pianoProgram_v2';
+    const LEGACY_STORAGE_KEY = 'pianoProgramSettings';
+    const COVER_TOTAL_V_MARGIN = 36; // 表紙の上下余白の合計 (mm)
+    const BG_MAX_SIDE = 3000;
+
+    const DEFAULT_SETTINGS = {
+      insideTopMargin: 18, insideBottomMargin: 18, insideLeftMargin: 16, insideRightMargin: 10,
+      coverTopMargin: 18, backTopMargin: 18, coverGap1: 16, coverGap2: 28,
+      coverHeaderSize: 18, coverTitleSize: 38, coverFooterSize: 14,
+      inputTitle: 'ピアノ発表会',
+      inputSubTitle: 'Piano Concert',
+      inputDate: '○○○○年○月○日(○)',
+      inputPlace: '会場名',
+      inputTime: '開場 ○○:○○ / 開演 ○○:○○',
+      inputBackTitle: 'Thank You For...',
+      inputBackBody: '',
+      fontTitle: "'Shippori Mincho', serif",
+      fontBody: "'Noto Sans JP', sans-serif",
+      eventBgColor: '#ffedd5',
+      eventTextColor: '#c2410c'
+    };
+    const DEFAULT_CLASS = { fontSize: 13, itemGap: 8, performerWidth: 42, nameWidth: 58 };
+    const ITEM_FIELDS = ['type', 'name', 'grade', 'song1', 'song2'];
+
+    const state = {
+      settings: { ...DEFAULT_SETTINGS },
+      classConfigs: {},   // { シート名: { fontSize, itemGap, performerWidth, nameWidth, splitIndex, className } }
+      sheets: {},         // { シート名: 演目配列 }
+      sheetOrder: [],
+      currentSheet: 'default',
+      excelName: '',
+      bgImages: { cover: '', inside: '' },
+      view: 'cover',
+      zoom: 'fit'
+    };
+
+    // ===== ユーティリティ =====
+    const $ = id => document.getElementById(id);
+    const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+    const isHexColor = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+    const isImageData = v => typeof v === 'string' && /^data:image\/[a-z0-9+.-]+;base64,[A-Za-z0-9+/=]+$/i.test(v);
+    const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
+
+    function getItems(name = state.currentSheet) {
+      return state.sheets[name] || [];
+    }
+
+    function getClassCfg(name = state.currentSheet) {
+      return {
+        ...DEFAULT_CLASS,
+        className: name === 'default' ? 'Aクラス' : name,
+        splitIndex: Math.max(1, Math.ceil(getItems(name).length / 2)),
+        ...state.classConfigs[name]
+      };
+    }
+
+    function getValue(scope, key) {
+      return scope === 'class' ? getClassCfg()[key] : state.settings[key];
+    }
+
+    function setValue(scope, key, value) {
+      if (scope === 'class') {
+        const name = state.currentSheet;
+        state.classConfigs[name] = { ...state.classConfigs[name], [key]: value };
+      } else {
+        state.settings[key] = value;
+      }
+    }
+
+    // ===== 設定コントロール（スライダー・数値・テキストを共通処理） =====
+    function syncControls() {
+      const max = Math.max(1, getItems().length);
+      document.querySelectorAll('[data-key="splitIndex"] input').forEach(i => i.max = max);
+
+      document.querySelectorAll('#sidebar [data-key]').forEach(holder => {
+        const v = getValue(holder.dataset.scope, holder.dataset.key);
+        if (holder.classList.contains('dual-input')) {
+          const [range] = holder.querySelectorAll('input');
+          const cv = clamp(Number(v), +range.min, +range.max);
+          holder.querySelectorAll('input').forEach(i => i.value = cv);
+        } else {
+          holder.value = v ?? '';
+        }
+      });
+    }
+
+    function onControlEvent(e) {
+      const el = e.target;
+      const holder = el.closest('[data-key]');
+      if (!holder || el.type === 'file') return;
+      const { key, scope } = holder.dataset;
+      let value;
+
+      if (holder.classList.contains('dual-input')) {
+        const [range, num] = holder.querySelectorAll('input');
+        const min = +range.min, max = +range.max;
+        const v = Math.round(parseFloat(el.value));
+        const inRange = Number.isFinite(v) && v >= min && v <= max;
+        if (!inRange && e.type === 'input') return; // 入力途中は確定（change）を待つ
+        value = Number.isFinite(v) ? clamp(v, min, max) : clamp(Number(getValue(scope, key)), min, max);
+        range.value = value;
+        num.value = value;
+      } else {
+        value = el.value;
+        if (el.type === 'color' && !isHexColor(value)) return;
+      }
+
+      if (getValue(scope, key) === value) return;
+      setValue(scope, key, value);
+      renderAll();
+      scheduleSave();
+    }
+
+    // ===== 描画 =====
+    function renderAll() {
+      const s = state.settings;
+      document.querySelectorAll('.page-sheet').forEach(sheet => {
+        sheet.style.setProperty('--font-title', s.fontTitle);
+        sheet.style.setProperty('--font-body', s.fontBody);
+        sheet.style.setProperty('--event-bg', s.eventBgColor);
+        sheet.style.setProperty('--event-text', s.eventTextColor);
+      });
+      renderCover();
+      renderInside();
+      applyBackgrounds();
+      checkOverflow();
+    }
+
+    function renderCover() {
+      const s = state.settings;
+      const cfg = getClassCfg();
+      const left = $('coverLeft');
+      const right = $('coverRight');
+
+      left.style.paddingTop = s.backTopMargin + 'mm';
+      left.style.paddingBottom = Math.max(0, COVER_TOTAL_V_MARGIN - s.backTopMargin) + 'mm';
+      right.style.paddingTop = s.coverTopMargin + 'mm';
+      right.style.paddingBottom = Math.max(0, COVER_TOTAL_V_MARGIN - s.coverTopMargin) + 'mm';
+
+      left.innerHTML = `
+        <div class="back-cover-box">
+          ${s.inputBackTitle ? `<div class="back-cover-title">${esc(s.inputBackTitle)}</div>` : ''}
+          ${s.inputBackBody ? `<div class="back-cover-body" style="font-size:${s.coverFooterSize * 0.9}px;">${esc(s.inputBackBody)}</div>` : ''}
+        </div>`;
+
+      right.innerHTML = `
+        <div class="cover-container">
+          <div class="class-name" style="font-size:${s.coverHeaderSize}px; margin-bottom:${s.coverGap1}px;">${esc(cfg.className)}</div>
+          <div class="main-title" style="font-size:${s.coverTitleSize}px;">${esc(s.inputTitle)}</div>
+          <div class="sub-title" style="font-size:${s.coverTitleSize * 0.42}px; margin-bottom:${s.coverGap2}px;">${esc(s.inputSubTitle)}</div>
+          <div class="cover-footer" style="font-size:${s.coverFooterSize}px;">
+            <div>${esc(s.inputDate)}</div>
+            <div style="font-weight:bold; margin-top:4px;">${esc(s.inputPlace)}</div>
+            <div style="margin-top:2px;">${esc(s.inputTime)}</div>
+          </div>
+        </div>`;
+    }
+
+    function renderInside() {
+      const s = state.settings;
+      const cfg = getClassCfg();
+      const items = getItems();
+      const left = $('insideLeft');
+      const right = $('insideRight');
+
+      [left, right].forEach(page => {
+        page.style.padding = `${s.insideTopMargin}mm ${s.insideRightMargin}mm ${s.insideBottomMargin}mm ${s.insideLeftMargin}mm`;
+      });
+
+      if (!items.length) {
+        left.innerHTML = `<div class="placeholder screen-only">Excelファイルをアップロードすると<br>ここに演目一覧が表示されます</div>`;
+        right.innerHTML = '';
+        return;
+      }
+
+      const split = clamp(cfg.splitIndex, 1, items.length);
+      left.innerHTML = buildProgramHtml(items.slice(0, split), cfg);
+      right.innerHTML = items.length > split ? buildProgramHtml(items.slice(split), cfg) : '';
+    }
+
+    function buildProgramHtml(list, cfg) {
+      const gap = cfg.itemGap;
+      const gradeW = 100 - cfg.nameWidth;
+
+      return `<div class="program-list" style="font-size:${cfg.fontSize}px;">` +
+        list.map(item => {
+          const isSectionHeader = item.type === '項目';
+          const isEvent = item.type.includes('イベント') || item.type.includes('企画') || item.type.includes('ゲーム');
+
+          if (isSectionHeader) {
+            return `
+              <div style="padding-bottom:${gap}px; margin-bottom:${gap}px; width:100%;">
+                <div class="section-header-item">
+                  <span>${esc(item.name || item.song1)}</span>
+                  ${item.song2 ? `<span style="font-size:0.85em; opacity:0.8;">${esc(item.song2)}</span>` : ''}
+                </div>
+              </div>`;
+          }
+
+          if (isEvent) {
+            const eventTitle = item.song1 || item.name || item.type || 'イベント';
+            return `
+              <div style="padding-bottom:${gap}px; margin-bottom:${gap}px; width:100%;">
+                <div class="event-bar-item">
+                  <span>${esc(eventTitle)}</span>
+                  ${item.song2 ? `<span style="font-size:0.9em;">（${esc(item.song2)}）</span>` : ''}
+                </div>
+              </div>`;
+          }
+
+          let performerHtml;
+          if (item.grade) {
+            const grade = /^[(（]/.test(item.grade) ? item.grade : `（${item.grade}）`;
+            performerHtml = `
+              <div class="performer-group has-grade" style="width:${cfg.performerWidth}%;">
+                <span class="performer-name" style="width:${cfg.nameWidth}%;">${esc(item.name)}</span>
+                <span class="performer-grade" style="width:${gradeW}%;">${esc(grade)}</span>
+              </div>`;
+          } else {
+            performerHtml = `
+              <div class="performer-group no-grade" style="width:${cfg.performerWidth}%;">
+                <span class="performer-name">${esc(item.name)}</span>
+              </div>`;
+          }
+
+          return `
+            <div class="program-item" style="padding-bottom:${gap}px; margin-bottom:${gap}px;">
+              ${performerHtml}
+              <div class="song-group">
+                <div class="song-title-1">${esc(item.song1)}</div>
+                ${item.song2 ? `<div class="song-title-2">${esc(item.song2)}</div>` : ''}
+              </div>
+            </div>`;
+        }).join('') +
+      `</div>`;
+    }
+
+    // ページからはみ出した面を検出して警告
+    function checkOverflow() {
+      const labels = { coverLeft: '裏表紙', coverRight: '表紙', insideLeft: '中面 左ページ', insideRight: '中面 右ページ' };
+      const over = [];
+      document.querySelectorAll('.page-half').forEach(page => {
+        const cs = getComputedStyle(page);
+        const avail = page.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+        const content = page.firstElementChild;
+        const isOver = !!content && content.offsetHeight > avail + 1;
+        page.classList.toggle('overflow', isOver);
+        if (isOver) over.push(labels[page.id]);
+      });
+      $('overflowWarn').textContent = over.length ? `⚠ はみ出し: ${over.join('・')}` : '';
+      return over;
+    }
+
+    // ===== 背景画像 =====
+    const appliedBg = { cover: null, inside: null };
+    function applyBackgrounds() {
+      const targets = { cover: 'sheetCover', inside: 'sheetInside' };
+      for (const type of ['cover', 'inside']) {
+        const img = state.bgImages[type];
+        if (appliedBg[type] !== img) {
+          $(targets[type]).style.backgroundImage = img ? `url("${img}")` : 'none';
+          appliedBg[type] = img;
+        }
+      }
+      $('bgCoverInfo').textContent = state.bgImages.cover ? '✓ 背景画像を設定済み' : '';
+      $('bgInsideInfo').textContent = state.bgImages.inside ? '✓ 背景画像を設定済み' : '';
+    }
+
+    function shrinkImage(dataUrl) {
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          const ratio = Math.min(1, BG_MAX_SIDE / Math.max(img.width, img.height));
+          if (ratio === 1 && dataUrl.length < 1500000) return resolve(dataUrl);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * ratio);
+          canvas.height = Math.round(img.height * ratio);
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.9));
+        };
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+      });
+    }
+
+    function loadBg(event, type) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async e => {
+        const data = await shrinkImage(e.target.result);
+        if (!data || !isImageData(data)) {
+          alert('画像を読み込めませんでした。JPEGまたはPNG形式の画像を選んでください。');
+          return;
+        }
+        state.bgImages[type] = data;
+        renderAll();
+        scheduleSave();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearBg(type) {
+      state.bgImages[type] = '';
+      $(type === 'cover' ? 'bgCoverInput' : 'bgInsideInput').value = '';
+      renderAll();
+      scheduleSave();
+    }
+
+    // ===== 表示切替・ズーム =====
+    const mobileQuery = window.matchMedia('(max-width: 900px)');
+
+    function closeSheet() {
+      $('sidebar').classList.remove('open');
+    }
+
+    function switchTab(btn) {
+      // スマホでは下部パネルの開閉を兼ねる（開いているタブを再度押すと閉じる）
+      if (mobileQuery.matches) {
+        const sidebarEl = $('sidebar');
+        if (sidebarEl.classList.contains('open') && btn.classList.contains('active')) {
+          closeSheet();
+          return;
+        }
+        sidebarEl.classList.add('open');
+      }
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + btn.dataset.tab));
+      if (btn.dataset.preview) switchPage(btn.dataset.preview);
+    }
+
+    function switchPage(view) {
+      state.view = view;
+      $('btnCover').classList.toggle('active', view === 'cover');
+      $('btnInside').classList.toggle('active', view === 'inside');
+      $('wrapCover').classList.toggle('inactive', view !== 'cover');
+      $('wrapInside').classList.toggle('inactive', view !== 'inside');
+      applyZoom();
+    }
+
+    function setZoom(z) {
+      state.zoom = z === 'fit' ? 'fit' : Number(z);
+      applyZoom();
+    }
+
+    function applyZoom() {
+      const viewport = $('viewport');
+      const W = $('sheetCover').offsetWidth;
+      const H = $('sheetCover').offsetHeight;
+      let scale = state.zoom;
+      if (scale === 'fit') {
+        const cs = getComputedStyle(viewport);
+        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+        scale = Math.min((viewport.clientWidth - padX) / W, (viewport.clientHeight - padY) / H, 1);
+      }
+      scale = Math.max(scale, 0.1);
+
+      document.querySelectorAll('.sheet-wrap').forEach(wrap => {
+        wrap.style.width = W * scale + 'px';
+        wrap.style.height = H * scale + 'px';
+        wrap.querySelector('.page-sheet').style.transform = `scale(${scale})`;
+      });
+      document.querySelectorAll('.zoom-btn').forEach(b => b.classList.toggle('active', b.dataset.zoom === String(state.zoom)));
+      $('zoomLabel').textContent = Math.round(scale * 100) + '%';
+    }
+
+    // ===== Excel =====
+    function parseRows(rows) {
+      const items = [];
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i] || [];
+        const item = {};
+        ITEM_FIELDS.forEach((f, j) => item[f] = r[j] == null ? '' : String(r[j]).trim());
+        if (ITEM_FIELDS.some(f => item[f])) items.push(item);
+      }
+      return items;
+    }
+
+    function handleExcel(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      if (typeof XLSX === 'undefined') {
+        alert('Excel読み込み用のライブラリを読み込めませんでした。インターネット接続を確認してページを再読み込みしてください。');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        let wb;
+        try {
+          wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        } catch (err) {
+          console.error(err);
+          alert('Excelファイルを読み込めませんでした。ファイル形式を確認してください。');
+          return;
+        }
+
+        const sheets = {};
+        wb.SheetNames.forEach(name => {
+          sheets[name] = parseRows(XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }));
+        });
+
+        state.sheets = sheets;
+        state.sheetOrder = [...wb.SheetNames];
+        state.excelName = file.name;
+        if (!state.sheetOrder.includes(state.currentSheet)) state.currentSheet = state.sheetOrder[0] || 'default';
+        // 保存済みのクラス別設定（左ページ件数など）はそのまま引き継ぐ
+
+        event.target.value = '';
+        populateSheetSelect();
+        syncControls();
+        switchPage('inside');
+        renderAll();
+        scheduleSave();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function populateSheetSelect() {
+      const select = $('sheetSelect');
+      select.innerHTML = '';
+      if (!state.sheetOrder.length) {
+        select.add(new Option('（Excel未読み込み）', ''));
+        select.disabled = true;
+      } else {
+        select.disabled = false;
+        state.sheetOrder.forEach(name => select.add(new Option(`${name}（${getItems(name).length}件）`, name)));
+        select.value = state.currentSheet;
+      }
+      $('excelInfo').textContent = state.excelName ? `✓ ${state.excelName}（${state.sheetOrder.length}クラス）を読み込み済み` : '';
+    }
+
+    function onSheetChange() {
+      state.currentSheet = $('sheetSelect').value || 'default';
+      syncControls();
+      renderAll();
+      scheduleSave();
+    }
+
+    function resetSplit() {
+      const cfg = state.classConfigs[state.currentSheet];
+      if (cfg) delete cfg.splitIndex;
+      syncControls();
+      renderAll();
+      scheduleSave();
+    }
+
+    function downloadSample() {
+      if (typeof XLSX === 'undefined') {
+        alert('Excel用ライブラリを読み込めませんでした。インターネット接続を確認してください。');
+        return;
+      }
+      const rows = [
+        ['種別', '氏名', '学年', '曲名1', '曲名2'],
+        ['項目', '第1部', '', '', ''],
+        ['演奏', '佐藤 ゆい', '年長', 'きらきら星', ''],
+        ['演奏', '鈴木 はると', '小1', 'メヌエット ト長調', 'ガヴォット'],
+        ['演奏', '高橋 さくら', '小3', 'エリーゼのために', ''],
+        ['イベント', '', '', 'お楽しみ企画', ''],
+        ['項目', '第2部', '', '', ''],
+        ['演奏', '田中 りく', '小5', 'トルコ行進曲', ''],
+        ['演奏', '講師演奏', '', 'ノクターン 第2番', '']
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{ wch: 10 }, { wch: 14 }, { wch: 8 }, { wch: 30 }, { wch: 30 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Aクラス');
+      XLSX.writeFile(wb, 'プログラム見本.xlsx');
+    }
+
+    // ===== 保存・読み込み =====
+    function setStatus(text, warn = false) {
+      const el = $('saveStatus');
+      el.textContent = text;
+      el.classList.toggle('warn', warn);
+    }
+
+    function buildSnapshot(includeImages = true) {
+      return {
+        app: 'piano-program',
+        version: 2,
+        settings: state.settings,
+        classConfigs: state.classConfigs,
+        sheets: state.sheets,
+        sheetOrder: state.sheetOrder,
+        currentSheet: state.currentSheet,
+        excelName: state.excelName,
+        bgImages: includeImages ? state.bgImages : { cover: '', inside: '' }
+      };
+    }
+
+    let saveTimer = null;
+    function scheduleSave() {
+      clearTimeout(saveTimer);
+      setStatus('保存中…');
+      saveTimer = setTimeout(saveNow, 400);
+    }
+
+    function saveNow() {
+      clearTimeout(saveTimer);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(buildSnapshot()));
+        setStatus('✓ 自動保存済み');
+      } catch (e) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(buildSnapshot(false)));
+          setStatus('⚠ 背景画像は容量超過で自動保存されません（データ書き出しで保存できます）', true);
+        } catch (e2) {
+          setStatus('⚠ 自動保存できませんでした（データ書き出しをご利用ください）', true);
+        }
+      }
+    }
+
+    // 外部データ（保存データ・読み込みファイル）を検証して state へ反映
+    function applySnapshot(data) {
+      if (!data || typeof data !== 'object') throw new Error('データの形式が正しくありません');
+      const src = data.settings || {};
+
+      const settings = { ...DEFAULT_SETTINGS };
+      for (const key of Object.keys(DEFAULT_SETTINGS)) {
+        const v = src[key];
+        if (v === undefined || v === null) continue;
+        if (typeof DEFAULT_SETTINGS[key] === 'number') {
+          const n = Number(v);
+          if (!Number.isFinite(n)) continue;
+          const ctl = document.querySelector(`.dual-input[data-key="${key}"] input`);
+          settings[key] = ctl ? clamp(Math.round(n), +ctl.min, +ctl.max) : n;
+        } else if (key.endsWith('Color')) {
+          if (isHexColor(v)) settings[key] = v;
+        } else if (key.startsWith('font')) {
+          const sel = document.querySelector(`select[data-key="${key}"]`);
+          if ([...sel.options].some(o => o.value === v)) settings[key] = v;
+        } else {
+          settings[key] = String(v);
+        }
+      }
+
+      const sheets = {};
+      if (data.sheets && typeof data.sheets === 'object') {
+        for (const [name, list] of Object.entries(data.sheets)) {
+          if (!Array.isArray(list)) continue;
+          sheets[name] = list.map(it => {
+            const item = {};
+            ITEM_FIELDS.forEach(f => item[f] = it && it[f] != null ? String(it[f]) : '');
+            return item;
+          });
+        }
+      }
+      let sheetOrder = Array.isArray(data.sheetOrder) ? data.sheetOrder.filter(n => n in sheets) : [];
+      Object.keys(sheets).forEach(n => { if (!sheetOrder.includes(n)) sheetOrder.push(n); });
+
+      const classConfigs = {};
+      if (data.classConfigs && typeof data.classConfigs === 'object') {
+        for (const [name, cfg] of Object.entries(data.classConfigs)) {
+          if (!cfg || typeof cfg !== 'object') continue;
+          const out = {};
+          for (const key of [...Object.keys(DEFAULT_CLASS), 'splitIndex']) {
+            const n = Number(cfg[key]);
+            if (cfg[key] != null && Number.isFinite(n)) out[key] = Math.round(n);
+          }
+          if (cfg.className != null) out.className = String(cfg.className);
+          classConfigs[name] = out;
+        }
+      }
+
+      const bg = data.bgImages || {};
+      state.settings = settings;
+      state.sheets = sheets;
+      state.sheetOrder = sheetOrder;
+      state.classConfigs = classConfigs;
+      state.currentSheet = sheetOrder.includes(data.currentSheet) ? data.currentSheet : (sheetOrder[0] || 'default');
+      state.excelName = sheetOrder.length && data.excelName ? String(data.excelName) : '';
+      state.bgImages = { cover: isImageData(bg.cover) ? bg.cover : '', inside: isImageData(bg.inside) ? bg.inside : '' };
+    }
+
+    // 旧バージョン（index.html）の保存データを新形式へ変換
+    function migrateLegacy(old) {
+      const settings = { ...old };
+      if (old.insideLeftMargin == null && old.insideSideMargin != null) settings.insideLeftMargin = old.insideSideMargin;
+      const offsetPx = Number(old.coverOffsetY) || 0;
+      if (offsetPx) settings.coverTopMargin = (Number(old.coverTopMargin) || 18) + Math.round(offsetPx * 25.4 / 96);
+      const classConfigs = { ...(old.classConfigs || {}) };
+      if (old.inputClass) classConfigs.default = { ...classConfigs.default, className: old.inputClass };
+      return { settings, classConfigs };
+    }
+
+    function loadFromStorage() {
+      let raw = null, legacy = null;
+      try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { /* 保存領域が使えない環境 */ }
+      if (raw) {
+        try { applySnapshot(JSON.parse(raw)); return true; } catch (e) { console.error('保存データの読み込みに失敗しました', e); }
+      }
+      try { legacy = localStorage.getItem(LEGACY_STORAGE_KEY); } catch (e) { /* 同上 */ }
+      if (legacy) {
+        try { applySnapshot(migrateLegacy(JSON.parse(legacy))); return true; } catch (e) { console.error('旧データの読み込みに失敗しました', e); }
+      }
+      return false;
+    }
+
+    function exportData() {
+      const blob = new Blob([JSON.stringify(buildSnapshot(), null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const title = (state.settings.inputTitle || 'program').replace(/[\\/:*?"<>|]/g, '_');
+      a.download = `${title}_プログラムデータ.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        let data;
+        try {
+          data = JSON.parse(e.target.result);
+        } catch (err) {
+          alert('ファイルを読み込めませんでした。「データ書き出し」で作成したファイルを選んでください。');
+          return;
+        }
+        if (!confirm('現在の内容を、読み込んだデータで置き換えます。よろしいですか？')) return;
+        try {
+          applySnapshot(data);
+        } catch (err) {
+          alert('データの形式が正しくありません。');
+          return;
+        }
+        populateSheetSelect();
+        syncControls();
+        renderAll();
+        saveNow();
+      };
+      reader.readAsText(file);
+    }
+
+    // ===== 印刷 =====
+    async function printNow() {
+      try { await document.fonts.ready; } catch (e) { /* フォントAPI非対応 */ }
+      const over = checkOverflow();
+      if (over.length && !confirm(`次のページで内容がはみ出しています：\n${over.join('、')}\n\nこのまま印刷しますか？`)) return;
+      window.print();
+    }
+
+    // ===== サイドバーのリサイズ =====
+    const sidebar = $('sidebar');
+    const resizer = $('resizer');
+    resizer.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      resizer.setPointerCapture(e.pointerId);
+      resizer.classList.add('dragging');
+    });
+    resizer.addEventListener('pointermove', e => {
+      if (!resizer.hasPointerCapture(e.pointerId)) return;
+      sidebar.style.width = clamp(e.clientX, 280, 650) + 'px';
+      if (state.zoom === 'fit') applyZoom();
+    });
+    resizer.addEventListener('pointerup', () => resizer.classList.remove('dragging'));
+    resizer.addEventListener('pointercancel', () => resizer.classList.remove('dragging'));
+
+    // ===== 初期化 =====
+    sidebar.addEventListener('input', onControlEvent);
+    sidebar.addEventListener('change', onControlEvent);
+    $('sidebarTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.tab-btn');
+      if (btn) switchTab(btn);
+    });
+    document.querySelector('.zoom-controls').addEventListener('click', e => {
+      const btn = e.target.closest('.zoom-btn');
+      if (btn) setZoom(btn.dataset.zoom);
+    });
+    // 画面回転・パネル開閉などでプレビュー領域の大きさが変わったら再フィット
+    new ResizeObserver(() => { if (state.zoom === 'fit') applyZoom(); }).observe($('viewport'));
+    window.addEventListener('beforeunload', () => { if (saveTimer) saveNow(); });
+
+    const restored = loadFromStorage();
+    populateSheetSelect();
+    syncControls();
+    renderAll();
+    switchPage('cover');
+    if (restored) setStatus('✓ 前回の内容を復元しました');
+
+    if (document.fonts) {
+      document.fonts.addEventListener('loadingdone', checkOverflow);
+      document.fonts.ready.then(checkOverflow);
+    }
+
+    // オフライン対応（Web公開時のみ有効）
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('./sw.js').catch(err => console.warn('Service Worker 登録失敗', err));
+    }
+  </script>
+
+</body>
+</html>
